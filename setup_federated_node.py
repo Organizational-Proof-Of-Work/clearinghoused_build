@@ -242,12 +242,9 @@ def do_bitcoind_setup(run_as_user, branch, base_path, dist_path, run_mode):
 
     #Install bitcoind
     BITCOIND_VER = "0.10.8"
-    runcmd("rm -rf /tmp/viacoind.tar.gz /tmp/viacoin-%s-linux" % BITCOIND_VER)
-    runcmd("wget -O /tmp/viacoind.tar.gz https://github.com/viacoin/viacoin/releases/download/v%s/viacoin-%s-linux64.tar.gz" % (BITCOIND_VER, BITCOIND_VER))
-    runcmd("tar -C /tmp -zxvf /tmp/viacoind.tar.gz")
-    runcmd("cp -af /tmp/viacoin-%s/bin/viacoind /usr/local/bin" % BITCOIND_VER)
-    runcmd("cp -af /tmp/viacoin-%s/bin/viacoin-cli /usr/local/bin" % BITCOIND_VER)
-    runcmd("rm -rf /tmp/viacoind.tar.gz /tmp/viacoin-%s-linux" % BITCOIND_VER)
+    runcmd("cp -af /home/victor/viacore-viacoin/depends/x86_64-pc-linux-gnu/bin/viacoind /usr/local/bin")
+    runcmd("cp -af /home/victor/viacore-viacoin/depends/x86_64-pc-linux-gnu/bin/viacoin-cli /usr/local/bin")
+    
 
     #Do basic inital bitcoin config (for both testnet and mainnet)
     runcmd("mkdir -p ~%s/.viacoin ~%s/.viacoin-testnet" % (USERNAME, USERNAME))
@@ -288,7 +285,7 @@ def do_bitcoind_setup(run_as_user, branch, base_path, dist_path, run_mode):
     else:
         runcmd("rm -f /etc/init/viacoind-testnet.override")
 
-    runcmd("chown -R %s:%s ~%s/.viacoin ~%s/.viacoin-testnet" % (DAEMON_USERNAME, USERNAME, USERNAME, USERNAME))
+    runcmd("chown -R %s:%s ~%s/.viacoin ~%s/.viacoin-testnet" % (DAEMONUSERNAME, USERNAME, USERNAME, USERNAME))
 
     return bitcoind_rpc_password, bitcoind_rpc_password_testnet
 
