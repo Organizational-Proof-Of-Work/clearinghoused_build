@@ -36,14 +36,14 @@ DAEMON_USERNAME = "xchd"
 REPO_COUNTERPARTYD_BUILD = "https://github.com/ClearingHouse/clearinghoused_build.git"
 REPO_COUNTERWALLET = "https://github.com/ClearingHouse/clearwallet.git"
 
-def pass_generator(size=14, chars=string.ascii_uppercase + string.ascii_lowercase + string.digits):
-    return ''.join(random.choice(chars) for x in range(size))
+def pass_generator(size=32, chars=string.ascii_uppercase + string.ascii_lowercase + string.digits):
+    return ''.join(random.SystemRandom().choice(chars) for x in range(size))
 
 def runcmd(command, abort_on_failure=True):
-    logging.debug("RUNNING COMMAND: %s" % command)
+    logging.debug("Executing installer command")
     ret = os.system(command)
     if abort_on_failure and ret != 0:
-        logging.error("Command failed: '%s'" % command)
+        logging.error("Installer command failed (status %s)" % ret)
         sys.exit(1)
 
 def modify_config(param_re, content_to_add, filenames, replace_if_exists=True, dotall=False, add_newline=True):
@@ -241,21 +241,34 @@ def do_bitcoind_setup(run_as_user, branch, base_path, dist_path, run_mode):
     bitcoind_rpc_password_testnet = pass_generator()
 
     #Install bitcoind
-    BITCOIND_VER = "0.10.8"
-    runcmd("cp -af /home/victor/viacore-viacoin/depends/x86_64-pc-linux-gnu/bin/viacoind /usr/local/bin")
-    runcmd("cp -af /home/victor/viacore-viacoin/depends/x86_64-pc-linux-gnu/bin/viacoin-cli /usr/local/bin")
+    BITCOIND_VER = "0.13.3.7-c8b4321"
+    for binary in ("viacoind", "viacoin-cli"):
+        binary_path = os.path.join("/usr/local/bin", binary)
+        if not os.path.isfile(binary_path) or not os.access(binary_path, os.X_OK):
+            raise RuntimeError("Required Viacoin executable missing: " + binary_path)
+        st = os.stat(binary_path)
+        if st.st_uid != 0 or st.st_mode & 0o022:
+            raise RuntimeError("Insecure executable permissions: " + binary_path)
+        logging.info("Verified executable permissions: " + binary_path)
+
+    version = subprocess.check_output(
+        ["/usr/local/bin/viacoind", "--version"]
+    ).decode("utf-8")
+
+    if BITCOIND_VER not in version:
+        raise RuntimeError("Unexpected Viacoin Core version")
     
 
     #Do basic inital bitcoin config (for both testnet and mainnet)
     runcmd("mkdir -p ~%s/.viacoin ~%s/.viacoin-testnet" % (USERNAME, USERNAME))
     if not os.path.exists(os.path.join(user_homedir, '.viacoin', 'viacoin.conf')):
-        runcmd(r"""bash -c 'echo -e "rpcuser=rpc\nrpcpassword=%s\nserver=1\ndaemon=1\ntxindex=1\naddrindex=1\nrpcthreads=1000\nrpctimeout=300" > ~%s/.viacoin/viacoin.conf'""" % (
+        runcmd(r"""bash -c 'echo -e "rpcuser=rpc\nrpcpassword=%s\nserver=1\ndaemon=1\nrpcbind=127.0.0.1\nrpcallowip=127.0.0.1\ntxindex=1\naddressindex=1\nrpcport=5222\nrpcthreads=4\nrpctimeout=300" > ~%s/.viacoin/viacoin.conf'""" % (
             bitcoind_rpc_password, USERNAME))
     else: #grab the existing RPC password
         bitcoind_rpc_password = subprocess.check_output(
             r"""bash -c "cat ~%s/.viacoin/viacoin.conf | sed -n 's/.*rpcpassword=\([^ \n]*\).*/\1/p'" """ % USERNAME, shell=True).strip().decode('utf-8')
     if not os.path.exists(os.path.join(user_homedir, '.viacoin-testnet', 'viacoin.conf')):
-        runcmd(r"""bash -c 'echo -e "rpcuser=rpc\nrpcpassword=%s\nserver=1\ndaemon=1\ntxindex=1\naddrindex=1\ntestnet=1\nrpcthreads=1000\nrpctimeout=300" > ~%s/.viacoin-testnet/viacoin.conf'""" % (
+        runcmd(r"""bash -c 'echo -e "rpcuser=rpc\nrpcpassword=%s\nserver=1\ndaemon=1\nrpcbind=127.0.0.1\nrpcallowip=127.0.0.1\ntxindex=1\naddressindex=1\ntestnet=1\nrpcport=25222\nrpcthreads=4\nrpctimeout=300" > ~%s/.viacoin-testnet/viacoin.conf'""" % (
             bitcoind_rpc_password_testnet, USERNAME))
     else:
         bitcoind_rpc_password_testnet = subprocess.check_output(
@@ -285,7 +298,7 @@ def do_bitcoind_setup(run_as_user, branch, base_path, dist_path, run_mode):
     else:
         runcmd("rm -f /etc/init/viacoind-testnet.override")
 
-    runcmd("chown -R %s:%s ~%s/.viacoin ~%s/.viacoin-testnet" % (DAEMONUSERNAME, USERNAME, USERNAME, USERNAME))
+    runcmd("chown -R %s:%s ~%s/.viacoin ~%s/.viacoin-testnet" % (DAEMON_USERNAME, USERNAME, USERNAME, USERNAME))
 
     return bitcoind_rpc_password, bitcoind_rpc_password_testnet
 
@@ -364,8 +377,8 @@ bitcoind_rpc_password_testnet, clearinghoused_public, clearwallet_support_email)
         modify_cp_config(r'^auto\-btc\-escrow\-enable=.*?$', 'auto-btc-escrow-enable=%s' %
             '1' if role == 'btcpayescrow' else '0', config='clearblockd')
         modify_cp_config(r'^armory\-utxsvr\-enable=.*?$', 'armory-utxsvr-enable=%s' %
-            '1' if role == 'counterwallet' else '0', config='clearblockd')
-        if role == 'counterwallet':
+            '1' if role == 'clearwallet' else '0', config='clearblockd')
+        if role == 'clearwallet':
             modify_cp_config(r'^support\-email=.*?$', 'support-email=%s' % clearwallet_support_email,
                 config='clearblockd') #may be blank string
 
@@ -435,7 +448,7 @@ def do_blockchain_service_setup(run_as_user, base_path, dist_path, run_mode, blo
             runcmd(r"""bash -c "echo 'manual' >> /etc/init/insight-testnet.override" """)
         else:
             runcmd("rm -f /etc/init/insight-testnet.override")
-    if blockchain_service == 'a':
+    elif blockchain_service == 'a':
         runcmd("rm -f /etc/init/insight.override /etc/init/insight-testnet.override")
         do_addrindex_setup()
     else: #insight not being used as blockchain service
@@ -744,7 +757,8 @@ def gather_build_questions(answered_questions):
             role_desc = "BTCPay escrow server"
         print("\tBuilding a %s" % role_desc)
         answered_questions['role'] = role
-    assert answered_questions['role'] in QUESTION_FLAGS['role']
+    role = answered_questions['role']
+    assert role in QUESTION_FLAGS['role']
     if answered_questions['role'] in ('vendingmachine', 'blockexplorer'):
         raise NotImplementedError("This role not implemented yet...")
 
@@ -850,7 +864,7 @@ def main():
             '--with-clearblockd' if os.path.exists(os.path.join(dist_path, "clearblockd")) else ''))
 
         #refresh counterwallet (if available)
-        if os.path.exists(os.path.exists(os.path.expanduser("~%s/clearwallet" % USERNAME))):
+        if os.path.exists(os.path.expanduser("~%s/clearwallet" % USERNAME)):
             do_counterwallet_setup(run_as_user, "AUTO", updateOnly=True)
 
         #offer to restart services
@@ -886,7 +900,7 @@ def main():
 
     do_newrelic_setup(run_as_user, base_path, dist_path, answered_questions['run_mode']) #optional
 
-    if answered_questions['security_hardening']:
+    if answered_questions['security_hardening'] == 'y':
         do_security_setup(run_as_user, answered_questions['branch'], base_path, dist_path)
 
     logging.info("Clearblock Federated Node Build Complete (whew).")

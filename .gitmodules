@@ -1,0 +1,9 @@
+[submodule "clearinghoused"]
+	path = dist/clearinghoused
+	url = https://github.com/vcgato29/clearinghoused.git
+[submodule "clearblockd"]
+	path = dist/clearblockd
+	url = https://github.com/vcgato29/clearblockd.git
+[submodule "clearwallet"]
+	path = dist/clearwallet
+	url = https://github.com/vcgato29/clearwallet.git
