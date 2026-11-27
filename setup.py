@@ -228,7 +228,7 @@ def install_dependencies(paths, with_counterblockd, assume_yes):
                     while True:
                         db_locally = input("clearblockd: Run mongo and redis locally? (y/n): ")
                         if db_locally.lower() not in ('y', 'n'):
-                            logger.error("Please enter 'y' or 'n'")
+                            logging.error("Please enter 'y' or 'n'")
                         else:
                             break
                 if db_locally.lower() == 'y':
@@ -297,7 +297,7 @@ def create_virtualenv(paths, with_counterblockd):
         if delete_if_exists and os.path.exists(env_path):
             logging.warning("Deleting existing virtualenv...")
             _rmtree(env_path)
-        assert not os.path.exists(os.path.join(env_path, 'bin'))
+        assert not os.path.exists(os.path.dirname(pip_path))
         logging.info("Creating virtualenv at '%s' ..." % env_path)
         runcmd("%s %s %s" % (paths['virtualenv_path'], virtualenv_args, env_path))
         
@@ -306,13 +306,27 @@ def create_virtualenv(paths, with_counterblockd):
             logging.error("pip does not exist at path '%s'" % pip_path)
             sys.exit(1)
             
+        # Bootstrap legacy Python 3.4 build dependencies.
+        if (os.name == 'posix'
+        and platform.dist()[0] == 'Ubuntu'
+        and platform.linux_distribution()[1] == '14.04'
+        and PYTHON3_VER == '3.4'
+        and env_path == paths['env_path']):
+            runcmd("%s install py==1.4.31" % pip_path)
+            runcmd("%s install virtualenv==15.1.0" % pip_path)
+            runcmd("%s install --no-deps tox==1.9.2" % pip_path)
+            runcmd("%s install MarkupSafe==1.1.1 Jinja2==2.10.3 Werkzeug==0.16.1 itsdangerous==1.1.0 Click==7.0" % pip_path)
+            runcmd("%s install coverage==4.5.4 certifi==2018.11.29 cov-core==1.15.0" % pip_path)
+
         #install packages from manifest via pip
-        runcmd("%s install -r %s" % (pip_path, os.path.join(paths['dist_path'], reqs_filename)))
+        runcmd("%s install -r %s" % (pip_path, reqs_filename))
 
     create_venv(paths['env_path'], paths['pip_path'], paths['python_path'], paths['virtualenv_args'],
         os.path.join(paths['dist_path'], "clearinghoused", "pip-requirements.txt"))
     if with_counterblockd: #as counterblockd uses python 2.x, it needs its own virtualenv
-        runcmd("rm -rf %s && mkdir -p %s" % (paths['env_path.clearblockd'], paths['env_path.clearblockd']))
+        if os.path.exists(paths["env_path.clearblockd"]):
+            _rmtree(paths["env_path.clearblockd"])
+        os.makedirs(paths["env_path.clearblockd"], exist_ok=True)
         create_venv(paths['env_path.clearblockd'], paths['pip_path.clearblockd'], paths['python_path.clearblockd'],
             paths['virtualenv_args.clearblockd'],
             os.path.join(paths['dist_path'], "clearblockd", "pip-requirements.txt"), delete_if_exists=False)
@@ -340,7 +354,7 @@ def setup_startup(paths, run_as_user, with_counterblockd, with_testnet, assume_y
         while True:
             start_choice = input("Start clearinghoused automatically on system startup? (y/n): ")
             if start_choice.lower() not in ('y', 'n'):
-                logger.error("Please enter 'y' or 'n'")
+                logging.error("Please enter 'y' or 'n'")
             else:
                 break
     if start_choice.lower() == 'n':
